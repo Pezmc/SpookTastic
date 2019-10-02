@@ -11,10 +11,14 @@ from pathlib import Path
 DEV_MODE = True
 FULLSCREEN = False
 
+MIN_MIN_GAP_BETWEEN_VIDEOS = 15
+MAX_MIN_GAP_BETWEEN_VIDEOS = 45
+
+PIR_PIN = 14
+
 #### Setup
 
 GPIO.setmode(GPIO.BCM)
-PIR_PIN = 14
 GPIO.setup(PIR_PIN, GPIO.IN)
 
 print "Loading Videos"
@@ -55,7 +59,7 @@ def play_video(video):
 
     player = None
     try: 
-        player = OMXPlayer(VIDEO_PATH, args='--no-osd -o alsa')
+        player = OMXPlayer(VIDEO_PATH, args='--no-osd -o alsa --aspect-mode fill g')
 
         # App is real slow to boot and start playing video
         time.sleep(1)
@@ -138,7 +142,7 @@ try:
         if videoPlaying:
             videoPlaying = check_if_video_playing(videoPlayer)
             if not videoPlaying:
-                sleepFor = random.randint(1 if DEV_MODE else 15, 5 if DEV_MODE else 45)
+                sleepFor = random.randint(1 if DEV_MODE else MIN_MIN_GAP_BETWEEN_VIDEOS, 5 if DEV_MODE else MAX_MIN_GAP_BETWEEN_VIDEOS)
                 waitUntilBeforeNextVideo = time.time() + sleepFor
                 print "Played video, not playing another for", sleepFor, "seconds"
 
