@@ -16,6 +16,12 @@ MAX_MIN_GAP_BETWEEN_VIDEOS = 45
 
 PIR_PIN = 14
 
+ENABLE_HUE = True
+HUE_BRIDGE_IP = '192.168.0.211'
+HUE_LIGHT_NAME = 'Hall Ceiling'
+HUE_DEFAULT_BRIGHNESS = 128
+HUE_FLICKER_MAX_BRIGHTNESS = 128
+
 #### Setup
 
 GPIO.setmode(GPIO.BCM)
@@ -120,6 +126,33 @@ def check_events():
 
     return True
 
+def connect_to_hue():
+    global HUE_BRIDGE_IP
+    from phue import Bridge, PhueRegistrationException
+    try:
+        b = Bridge(HUE_BRIDGE_IP)
+        b.connect()
+    except PhueRegistrationException as e:
+        raw_input('Press button on Bridge then hit Enter to try again')  # noqa
+
+    return b
+
+def flash_light(bridge):
+    global HUE_LIGHT_NAME, HUE_FLICKER_MAX_BRIGHTNESS
+    bridge.set_light(HUE_LIGHT_NAME, {
+        'transitiontime' : 0,
+        'on' : True,
+        'bri' : random.randint(0, HUE_FLICKER_MAX_BRIGHTNESS)
+    })
+
+def return_light_to_default(bridge):
+    global HUE_LIGHT_NAME, HUE_DEFAULT_BRIGHNESS
+    bridge.set_light(HUE_LIGHT_NAME, {
+        'transitiontime' : 100,
+        'on' : True,
+        'bri' : HUE_DEFAULT_BRIGHNESS
+    })
+
 #### Main loop
 
 pygame.init()
@@ -129,6 +162,11 @@ videoPlaying = False
 videoPlayer = None
 
 waitUntilBeforeNextVideo = time.time()
+
+if HUE_ENABLED:
+    print "Using Hue light"
+    bridge = connect_to_hue()
+    return_light_to_default(bridge)
 
 print "Ready"
 try:
@@ -140,8 +178,11 @@ try:
             break
 
         if videoPlaying:
+            if HUE_ENABLED:
+                flash_light(bridge)
             videoPlaying = check_if_video_playing(videoPlayer)
             if not videoPlaying:
+                return_light_to_default(bridge)
                 sleepFor = random.randint(1 if DEV_MODE else MIN_MIN_GAP_BETWEEN_VIDEOS, 5 if DEV_MODE else MAX_MIN_GAP_BETWEEN_VIDEOS)
                 waitUntilBeforeNextVideo = time.time() + sleepFor
                 print "Played video, not playing another for", sleepFor, "seconds"
