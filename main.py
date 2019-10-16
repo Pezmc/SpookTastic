@@ -4,9 +4,14 @@ import time
 import glob
 import random
 import sys
+import argparse
+
 from omxplayer.player import OMXPlayer, OMXPlayerDeadError
 from dbus import DBusException
 from pathlib import Path
+
+import logging
+logging.basicConfig(level=logging.INFO)
 
 DEV_MODE = False
 FULLSCREEN = False
@@ -18,9 +23,19 @@ PIR_PIN = 14
 
 HUE_ENABLED = True
 HUE_BRIDGE_IP = '192.168.0.211'
-HUE_LIGHT_NAME = 'Hall Ceiling'
+HUE_LIGHT_NAME = 'Back Left'
 HUE_DEFAULT_BRIGHNESS = 128
 HUE_FLICKER_MAX_BRIGHTNESS = 128
+
+#### Args
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-f", "--fullscreen", help="Open full screen", action="store_true")
+parser.add_argument("-d", "--devmode", help="Shorten the sleeps for use in development", action="store_true")
+args = parser.parse_args()
+
+FULLSCREEN = FULLSCREEN or args.fullscreen
+DEV_MODE = DEV_MODE or args.devmode
 
 #### Setup
 
@@ -32,7 +47,7 @@ print "Loading Videos"
 time.sleep(1)
 
 videos = glob.glob("/home/pi/Videos/*")
-videosInQueue = videos
+videosInQueue = list(videos)
 random.shuffle(videosInQueue)
 
 print "Found",  len(videos), "videos"
@@ -48,10 +63,11 @@ pygame.mouse.set_visible(False)
 #### Functions
 
 def start_random_video():
-    global videosInQueue
+    global videosInQueue, videos
 
     if len(videosInQueue) == 0:
-        videosInQueue = videos
+        print "Resetting the queue"
+        videosInQueue = list(videos)
         random.shuffle(videosInQueue)
 
     video = videosInQueue.pop()
@@ -61,16 +77,19 @@ def start_random_video():
 
 def play_video(video):
     VIDEO_PATH = Path(video)
-    print VIDEO_PATH
 
     player = None
     try:
-        player = OMXPlayer(VIDEO_PATH, args='--no-osd -o alsa --aspect-mode fill')
+        arguments = "--no-osd -o alsa --aspect-mode fill"
+        if DEV_MODE:
+            arguments = arguments + " --win '0 0 400 300'"
+
+        player = OMXPlayer(VIDEO_PATH, args=arguments)
 
         # App is real slow to boot and start playing video
         time.sleep(1)
 
-        #player.play()
+        player.play()
 
     except SystemError:
         print "OMXPlayer failed to start, maybe"
@@ -91,7 +110,9 @@ def check_if_video_playing(player):
         if not player:
             return False
 
-        return player.is_playing()
+        result = player.is_playing()
+
+        return result
 
     except OMXPlayerDeadError:
         print "OMXPlayer appeared to close, video likely ended!"
@@ -171,41 +192,64 @@ if HUE_ENABLED:
     bridge = connect_to_hue()
     return_light_to_default(bridge)
 
+lastPrintAt = 0
+lastVideoStateCheckAt = 0
+lastEventCheckAt = 0
+
+startFlashingAt = 0
+stopFlashingAt = 0
+
 print "Ready"
+if DEV_MODE:
+    print "DEV_MODE enabled"
+if FULLSCREEN:
+    print "FULLSCREEN enabled"
 try:
     while running:
-        running = check_events()
-        if not running:
-            if videoPlayer:
-                videoPlayer.quit()
-            break
+        currentTime = time.time()
+
+        if currentTime > lastEventCheckAt - 1: # check for events once per second
+            lastEventCheckAt = currentTime
+            running = check_events()
+            if not running:
+                if videoPlayer:
+                    videoPlayer.quit()
+                break
 
         if videoPlaying:
-            if HUE_ENABLED:
+            if HUE_ENABLED and currentTime > startFlashingAt and currentTime < stopFlashingAt:
                 print "flashing"
                 flash_light(bridge)
-            videoPlaying = check_if_video_playing(videoPlayer)
-            if not videoPlaying:
-                return_light_to_default(bridge)
-                sleepFor = random.randint(1 if DEV_MODE else MIN_MIN_GAP_BETWEEN_VIDEOS, 5 if DEV_MODE else MAX_MIN_GAP_BETWEEN_VIDEOS)
-                waitUntilBeforeNextVideo = time.time() + sleepFor
-                print "Played video, not playing another for", sleepFor, "seconds"
+
+            if currentTime > lastVideoStateCheckAt + 1: # only check video state every second
+                lastVideoStateCheckAt = currentTime
+                videoPlaying = check_if_video_playing(videoPlayer)
+                if not videoPlaying:
+                    if HUE_ENABLED:
+                        print "Returning light to default"
+                        return_light_to_default(bridge)
+                    sleepFor = random.randint(1 if DEV_MODE else MIN_MIN_GAP_BETWEEN_VIDEOS, 5 if DEV_MODE else MAX_MIN_GAP_BETWEEN_VIDEOS)
+                    waitUntilBeforeNextVideo = time.time() + sleepFor
+                    print "Played video, not playing another for", int(sleepFor), "seconds"
 
         else:
             if GPIO.input(PIR_PIN):
                 print "Motion Detected!"
-                currentTime = time.time()
                 if currentTime > waitUntilBeforeNextVideo:
                     videoPlaying = True
                     videoPlayer = start_random_video()
+                    startFlashingAt = currentTime + 2 # wait before flashing
+                    stopFlashingAt = startFlashingAt + 10 # flash for this long
                 else:
-                    print "Not triggering video, waiting", waitUntilBeforeNextVideo - currentTime, "seconds"
+                    if currentTime > lastPrintAt + 3: # only print every 3 seconds
+                        lastPrintAt = currentTime
+                        print "Not triggering video, waiting", int(waitUntilBeforeNextVideo - currentTime), "seconds"
 
         if HUE_ENABLED and videoPlaying:
-            time.sleep(0.01)
-            print "short sleep"
+            # Skip sleeping while flashing
+            if currentTime < startFlashingAt or currentTime > stopFlashingAt:
+                time.sleep(0.5) 
         else:
-            print "long sleep"
             time.sleep(0.5)
 
 finally:
