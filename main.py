@@ -8,7 +8,7 @@ from omxplayer.player import OMXPlayer, OMXPlayerDeadError
 from dbus import DBusException
 from pathlib import Path
 
-DEV_MODE = True
+DEV_MODE = False
 FULLSCREEN = False
 
 MIN_MIN_GAP_BETWEEN_VIDEOS = 15
@@ -16,7 +16,7 @@ MAX_MIN_GAP_BETWEEN_VIDEOS = 45
 
 PIR_PIN = 14
 
-ENABLE_HUE = True
+HUE_ENABLED = True
 HUE_BRIDGE_IP = '192.168.0.211'
 HUE_LIGHT_NAME = 'Hall Ceiling'
 HUE_DEFAULT_BRIGHNESS = 128
@@ -64,13 +64,13 @@ def play_video(video):
     print VIDEO_PATH
 
     player = None
-    try: 
-        player = OMXPlayer(VIDEO_PATH, args='--no-osd -o alsa --aspect-mode fill g')
+    try:
+        player = OMXPlayer(VIDEO_PATH, args='--no-osd -o alsa --aspect-mode fill')
 
         # App is real slow to boot and start playing video
         time.sleep(1)
 
-        player.play()
+        #player.play()
 
     except SystemError:
         print "OMXPlayer failed to start, maybe"
@@ -129,13 +129,15 @@ def check_events():
 def connect_to_hue():
     global HUE_BRIDGE_IP
     from phue import Bridge, PhueRegistrationException
+    bridge = False
     try:
-        b = Bridge(HUE_BRIDGE_IP)
-        b.connect()
+        bridge = Bridge(HUE_BRIDGE_IP)
+        bridge.connect()
     except PhueRegistrationException as e:
-        raw_input('Press button on Bridge then hit Enter to try again')  # noqa
+        raw_input('Press button on Bridge then hit Enter to try again')
+	bridge = connect_to_hue()
 
-    return b
+    return bridge
 
 def flash_light(bridge):
     global HUE_LIGHT_NAME, HUE_FLICKER_MAX_BRIGHTNESS
@@ -160,6 +162,7 @@ running = True
 
 videoPlaying = False
 videoPlayer = None
+lastPIRState = False
 
 waitUntilBeforeNextVideo = time.time()
 
@@ -170,15 +173,16 @@ if HUE_ENABLED:
 
 print "Ready"
 try:
-    while running:        
+    while running:
         running = check_events()
-        if not running: 
+        if not running:
             if videoPlayer:
                 videoPlayer.quit()
             break
 
         if videoPlaying:
             if HUE_ENABLED:
+                print "flashing"
                 flash_light(bridge)
             videoPlaying = check_if_video_playing(videoPlayer)
             if not videoPlaying:
@@ -190,13 +194,19 @@ try:
         else:
             if GPIO.input(PIR_PIN):
                 print "Motion Detected!"
-                if time.time() > waitUntilBeforeNextVideo:
+                currentTime = time.time()
+                if currentTime > waitUntilBeforeNextVideo:
                     videoPlaying = True
                     videoPlayer = start_random_video()
                 else:
-                    print "Not triggering video, waiting until", waitUntilBeforeNextVideo
+                    print "Not triggering video, waiting", waitUntilBeforeNextVideo - currentTime, "seconds"
 
-        time.sleep(0.25)
+        if HUE_ENABLED and videoPlaying:
+            time.sleep(0.01)
+            print "short sleep"
+        else:
+            print "long sleep"
+            time.sleep(0.5)
 
 finally:
     pygame.quit()
