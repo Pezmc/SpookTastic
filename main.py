@@ -1,3 +1,4 @@
+# TODO: Add no network connection handling
 import pygame
 import RPi.GPIO as GPIO
 import time
@@ -23,9 +24,9 @@ PIR_PIN = 14
 
 HUE_ENABLED = True
 HUE_BRIDGE_IP = '192.168.0.211'
-HUE_LIGHT_NAME = 'Back Left'
+HUE_LIGHT_NAME = 'Hall Ceiling'
 HUE_DEFAULT_BRIGHNESS = 128
-HUE_FLICKER_MAX_BRIGHTNESS = 128
+HUE_FLICKER_MAX_BRIGHTNESS = 64
 
 #### Args
 
@@ -106,7 +107,7 @@ def play_video(video):
         return player
 
 def check_if_video_playing(player):
-    try: 
+    try:
         if not player:
             return False
 
@@ -238,7 +239,7 @@ try:
                 if currentTime > waitUntilBeforeNextVideo:
                     videoPlaying = True
                     videoPlayer = start_random_video()
-                    startFlashingAt = currentTime + 2 # wait before flashing
+                    startFlashingAt = currentTime + 3 # wait before flashing
                     stopFlashingAt = startFlashingAt + 10 # flash for this long
                 else:
                     if currentTime > lastPrintAt + 3: # only print every 3 seconds
