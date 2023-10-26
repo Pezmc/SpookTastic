@@ -15,14 +15,16 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 DEV_MODE = False
-FULLSCREEN = False
+FULLSCREEN = True
 
-MIN_MIN_GAP_BETWEEN_VIDEOS = 15
-MAX_MIN_GAP_BETWEEN_VIDEOS = 45
+MANUAL_TRIGGER = False
+
+MIN_MIN_GAP_BETWEEN_VIDEOS = 10
+MAX_MIN_GAP_BETWEEN_VIDEOS = 30
 
 PIR_PIN = 14
 
-HUE_ENABLED = True
+HUE_ENABLED = False
 HUE_BRIDGE_IP = '192.168.0.211'
 HUE_LIGHT_NAME = 'Hall Ceiling'
 HUE_DEFAULT_BRIGHNESS = 128
@@ -127,7 +129,7 @@ def check_events():
     sys.stdout.write(".")
     sys.stdout.flush()
 
-    global FULLSCREEN
+    global FULLSCREEN, MANUAL_TRIGGER
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             print "Pygame quit triggered, closing"
@@ -138,6 +140,9 @@ def check_events():
                 print "Escape pressed, closing"
                 pygame.quit()
                 return False
+            elif event.unicode.lower() == "t":
+                print "Manual trigger"
+                MANUAL_TRIGGER = not MANUAL_TRIGGER
             elif event.unicode.lower() == "f":
                 print "Toggling fullscreen"
                 FULLSCREEN = not FULLSCREEN
@@ -234,7 +239,8 @@ try:
                     print "Played video, not playing another for", int(sleepFor), "seconds"
 
         else:
-            if GPIO.input(PIR_PIN):
+            if GPIO.input(PIR_PIN) or MANUAL_TRIGGER:
+                MANUAL_TRIGGER = False
                 print "Motion Detected!"
                 if currentTime > waitUntilBeforeNextVideo:
                     videoPlaying = True
